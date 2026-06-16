@@ -5,30 +5,18 @@ locals {
   name = "${var.app}-${var.env}"
 }
 
-resource "azurerm_resource_group" "this" {
-  name     = "rg-${local.name}-network"
-  location = local.cfg.location
-  tags     = try(local.cfg.tags, {})
-}
-
-module "vnet" {
-  source = "./modules/vnet"
-
-  providers = {
-    azurerm     = azurerm
-    azurerm.hub = azurerm.hub
+# DEMO PLACEHOLDER (state-management branch).
+# Replaces module "vnet" with a no-op resource so we can validate the
+# per-subscription GitLab state backend (init / lock / plan / apply / state
+# isolation) without creating Azure resources. The parsed config is stored in
+# state so you can see each subscription keeps its own distinct state content.
+resource "terraform_data" "vnet_placeholder" {
+  input = {
+    vnet_name       = "vnet-${local.name}"
+    subscription_id = local.cfg.subscription_id
+    location        = local.cfg.location
+    address_space   = local.cfg.address_space
+    subnets         = [for s in local.cfg.subnets : s.name]
+    hub_vnet_id     = local.cfg.hub_vnet_id
   }
-
-  name                = "vnet-${local.name}"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = local.cfg.location
-  address_space       = local.cfg.address_space
-  subnets             = local.cfg.subnets
-  dns_servers         = try(local.cfg.dns_servers, [])
-  hub_vnet_id         = local.cfg.hub_vnet_id
-
-  # Name of the spoke as seen from the hub side peering.
-  spoke_label = local.name
-
-  tags = try(local.cfg.tags, {})
 }

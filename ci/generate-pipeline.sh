@@ -4,10 +4,9 @@
 # plan + apply job per subscription (<app>-<env>). Adding a new JSON file
 # automatically adds its jobs - no YAML edits required.
 #
-# Per app/env service-principal credentials are read from CI/CD variables named
-# <APP>_<ENV>_CLIENT_ID and <APP>_<ENV>_CLIENT_SECRET (e.g. APP1_DEV_CLIENT_ID).
-# The same SP is used for the hub->spoke peering (it just targets a different,
-# hardcoded subscription via the aliased provider).
+# DEMO (state-management branch): jobs need no Azure credentials; they only
+# exercise the per-subscription GitLab state backend. The real branch resolves
+# per app/env service-principal credentials from <APP>_<ENV>_CLIENT_ID/SECRET.
 #
 set -euo pipefail
 
@@ -22,11 +21,9 @@ stages:
     name: hashicorp/terraform:1.14
     entrypoint: [""]
   before_script:
-    # Service principal credentials. ARM_TENANT_ID is a shared CI variable;
-    # client id/secret are per-app/env. The aliased hub provider inherits these.
-    - export ARM_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
-    - eval "export ARM_CLIENT_ID=\"\$${VARPREFIX}_CLIENT_ID\""
-    - eval "export ARM_CLIENT_SECRET=\"\$${VARPREFIX}_CLIENT_SECRET\""
+    # DEMO: no Azure auth needed - we only exercise the GitLab state backend.
+    # CI_JOB_TOKEN is provided automatically. (The real branch exports ARM_*
+    # service-principal credentials here.)
     # GitLab-managed state, one state name per subscription.
     - |
       terraform init \
