@@ -1,0 +1,15 @@
+{
+  "subscription_id": "00000000-0000-0000-0000-000000000001",
+  "location": "westeurope",
+  "address_space": ["10.10.0.0/16"],
+  "subnets": [
+    { "name": "app", "prefix": "10.10.1.0/24" },
+    { "name": "data", "prefix": "10.10.2.0/24" }
+  ],
+  "dns_servers": [],
+  "hub_vnet_id": "/subscriptions/ffffffff-ffff-ffff-ffff-ffffffffffff/resourceGroups/rg-hub-network/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+  "tags": {
+    "app": "app1",
+    "env": "dev"
+  }
+}

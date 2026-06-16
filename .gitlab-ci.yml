@@ -1,0 +1,52 @@
+# Parent pipeline:
+#   1. generate -> scan config/*/*.json and build a child pipeline
+#   2. deploy   -> trigger the generated child pipeline (plan / gated apply)
+#
+# Runs on merge requests (plan only) and on the default branch (plan + manual
+# apply). See README.md for the required CI/CD variables.
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+stages:
+  - generate
+  - deploy
+
+generate:
+  stage: generate
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache bash jq
+  script:
+    - bash ci/generate-pipeline.sh > generated-config.yml
+  artifacts:
+    paths: [generated-config.yml]
+    expire_in: 1 day
+
+deploy:
+  stage: deploy
+  variables:
+    # Forwarded into the child pipeline so its jobs can gate plan vs apply.
+    PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+    TARGET_BRANCH: $CI_COMMIT_BRANCH
+  # Skip the trigger entirely when no Terraform/config changed, so we never
+  # create a child pipeline whose jobs are all filtered out.
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &tf_changes
+        - "config/**/*.json"
+        - "*.tf"
+        - "modules/**/*"
+        - "ci/generate-pipeline.sh"
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *tf_changes
+  trigger:
+    include:
+      - artifact: generated-config.yml
+        job: generate
+    strategy: depend
+    forward:
+      yaml_variables: true
+      pipeline_variables: true
