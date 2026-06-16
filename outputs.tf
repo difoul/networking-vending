@@ -8,3 +8,8 @@ output "state_name" {
   description = "Logical state name for this subscription (<app>-<env>)."
   value       = local.name
 }
+
+output "module_version" {
+  description = "Per-app/env module version read from config (demo of the data path)."
+  value       = local.cfg.module_version
+}

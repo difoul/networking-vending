@@ -24,6 +24,7 @@ blob per subscription.
 ```json
 {
   "subscription_id": "<spoke subscription guid>",
+  "module_version": "1.0.0",
   "location": "westeurope",
   "address_space": ["10.10.0.0/16"],
   "subnets": [{ "name": "app", "prefix": "10.10.1.0/24" }],
@@ -32,6 +33,20 @@ blob per subscription.
   "tags": { "app": "app1", "env": "dev" }
 }
 ```
+
+## Per-app/env module version (demo)
+
+Terraform requires a module's `version` to be a static literal, so it can't be
+a variable. The version lives as data in each config's `module_version`, and
+CI stamps it into the committed `module.tf` (`ci/stamp-module-version.sh`)
+before `terraform init`.
+
+On this demo branch there is no real module (the resource is a `terraform_data`
+placeholder), so the stamp script is a **no-op** and `module_version` is simply
+echoed into state via the placeholder output - demonstrating the data path from
+JSON to per-subscription state (note the sample configs use 1.0.0 for dev and
+1.1.0 for sim). On the real branch the same script stamps the value into
+`module.tf`'s `version` line.
 
 ## Required CI/CD variables
 

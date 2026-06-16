@@ -38,6 +38,8 @@ stages:
   before_script:
     # DEMO: no Azure auth needed - we only exercise the GitLab state backend.
     # (The real branch exports ARM_* service-principal credentials here.)
+    # Stamp the per-app/env module version (no-op on this branch: no module.tf).
+    - bash ci/stamp-module-version.sh
     - terraform init
 HEADER
 
