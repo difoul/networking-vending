@@ -31,15 +31,21 @@ deploy:
     # Forwarded into the child pipeline so its jobs can gate plan vs apply.
     PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
     TARGET_BRANCH: $CI_COMMIT_BRANCH
-  # Skip the trigger entirely when no Terraform/config changed, so we never
-  # create a child pipeline whose jobs are all filtered out.
+  # Skip the trigger when no Terraform/config changed, so we never create a
+  # child pipeline whose jobs are all filtered out.
   rules:
+    # Escape hatches: run "Run pipeline" from the UI, or set RUN_ALL=true, to
+    # plan every subscription regardless of which files changed (demos, or
+    # re-running after a CI-plumbing fix).
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$RUN_ALL == "true"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: &tf_changes
+        - ".gitlab-ci.yml"
+        - "ci/**/*"
         - "config/**/*.json"
         - "*.tf"
         - "modules/**/*"
-        - "ci/generate-pipeline.sh"
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes: *tf_changes
   trigger:
