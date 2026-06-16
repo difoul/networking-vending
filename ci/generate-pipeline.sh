@@ -20,21 +20,25 @@ stages:
   image:
     name: hashicorp/terraform:1.14
     entrypoint: [""]
+  variables:
+    # GitLab-managed state, one state name per subscription. Backend auth is
+    # supplied via TF_HTTP_* env vars (resolved fresh in EVERY job) rather than
+    # -backend-config flags. Passing the password via -backend-config bakes the
+    # plan job's CI_JOB_TOKEN into plan.cache; by the time the separate apply
+    # job runs it has expired -> "HTTP remote state endpoint requires auth".
+    # Env vars avoid that: each job authenticates with its own live token.
+    TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}"
+    TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}/lock"
+    TF_HTTP_LOCK_METHOD: "POST"
+    TF_HTTP_UNLOCK_METHOD: "DELETE"
+    TF_HTTP_USERNAME: "gitlab-ci-token"
+    TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+    TF_HTTP_RETRY_WAIT_MIN: "5"
   before_script:
     # DEMO: no Azure auth needed - we only exercise the GitLab state backend.
-    # CI_JOB_TOKEN is provided automatically. (The real branch exports ARM_*
-    # service-principal credentials here.)
-    # GitLab-managed state, one state name per subscription.
-    - |
-      terraform init \
-        -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}" \
-        -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}/lock" \
-        -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${STATE_NAME}/lock" \
-        -backend-config="username=gitlab-ci-token" \
-        -backend-config="password=${CI_JOB_TOKEN}" \
-        -backend-config="lock_method=POST" \
-        -backend-config="unlock_method=DELETE" \
-        -backend-config="retry_wait_min=5"
+    # (The real branch exports ARM_* service-principal credentials here.)
+    - terraform init
 HEADER
 
 # ----- One plan + apply job per config file ----------------------------------
