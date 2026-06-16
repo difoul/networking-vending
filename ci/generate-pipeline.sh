@@ -67,13 +67,17 @@ plan:${state}:
     expire_in: 1 day
   # Only run when this subscription's config changed, or when shared
   # Terraform/module/pipeline code changed (which affects every subscription).
+  # web / RUN_ALL bypass change-detection (forwarded from the parent pipeline).
   rules:
+    - if: '\$PIPELINE_SOURCE == "web"'
+    - if: '\$RUN_ALL == "true"'
     - if: '\$PIPELINE_SOURCE == "merge_request_event"'
       changes: &changes-${state}
         - "${f}"
+        - ".gitlab-ci.yml"
+        - "ci/**/*"
         - "*.tf"
         - "modules/**/*"
-        - "ci/generate-pipeline.sh"
     - if: '\$TARGET_BRANCH == \$CI_DEFAULT_BRANCH'
       changes: *changes-${state}
 
@@ -91,9 +95,14 @@ apply:${state}:
     name: ${state}
   script:
     - terraform apply -input=false plan.cache
+  # Apply is always manual and only on the default branch (TARGET_BRANCH is
+  # empty on MR pipelines, so those never match).
   rules:
-    - if: '\$TARGET_BRANCH == \$CI_DEFAULT_BRANCH'
+    - if: '\$TARGET_BRANCH != \$CI_DEFAULT_BRANCH'
+      when: never
+    - if: '\$PIPELINE_SOURCE == "web" || \$RUN_ALL == "true"'
       when: manual
-      changes: *changes-${state}
+    - changes: *changes-${state}
+      when: manual
 EOF
 done
