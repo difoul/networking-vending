@@ -1,5 +1,6 @@
 {
   "subscription_id": "00000000-0000-0000-0000-000000000002",
+  "module_version": "1.0.0",
   "location": "westeurope",
   "address_space": ["10.11.0.0/16"],
   "subnets": [

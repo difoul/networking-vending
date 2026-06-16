@@ -24,6 +24,7 @@ blob per subscription.
 ```json
 {
   "subscription_id": "<spoke subscription guid>",
+  "module_version": "1.0.0",
   "location": "westeurope",
   "address_space": ["10.10.0.0/16"],
   "subnets": [{ "name": "app", "prefix": "10.10.1.0/24" }],
@@ -32,6 +33,25 @@ blob per subscription.
   "tags": { "app": "app1", "env": "dev" }
 }
 ```
+
+## Per-app/env module version
+
+Terraform requires a module's `version` to be a static literal (it's resolved
+at `terraform init`, before variables exist), so it can't be a variable. The
+version therefore lives as data in each config's `module_version`, and CI
+stamps it into the committed `module.tf` in place (`ci/stamp-module-version.sh`)
+before `terraform init` - keeping `module.tf` reviewable and locally valid.
+
+This is **inert today**: the module is a local source (`./modules/vnet`), which
+has no `version` argument, so the stamp script is a no-op. To activate per-env
+versioning once the module is published:
+
+1. In `module.tf`, swap the local source for a registry/git source and add a
+   baseline `version = "x.y.z"` line (see the comment in that file).
+2. Keep `module_version` set per `config/<app>/<env>.json`.
+
+The stamp script then fills the version per subscription, and fails the job if a
+version line exists but `module_version` is missing.
 
 ## Required CI/CD variables
 

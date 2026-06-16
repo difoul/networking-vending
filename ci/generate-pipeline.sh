@@ -42,6 +42,8 @@ stages:
     - export ARM_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
     - eval "export ARM_CLIENT_ID=\"\$${VARPREFIX}_CLIENT_ID\""
     - eval "export ARM_CLIENT_SECRET=\"\$${VARPREFIX}_CLIENT_SECRET\""
+    # Stamp the per-app/env module version into module.tf (no-op while local).
+    - bash ci/stamp-module-version.sh
     - terraform init
 HEADER
 

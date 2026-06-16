@@ -10,25 +10,3 @@ resource "azurerm_resource_group" "this" {
   location = local.cfg.location
   tags     = try(local.cfg.tags, {})
 }
-
-module "vnet" {
-  source = "./modules/vnet"
-
-  providers = {
-    azurerm     = azurerm
-    azurerm.hub = azurerm.hub
-  }
-
-  name                = "vnet-${local.name}"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = local.cfg.location
-  address_space       = local.cfg.address_space
-  subnets             = local.cfg.subnets
-  dns_servers         = try(local.cfg.dns_servers, [])
-  hub_vnet_id         = local.cfg.hub_vnet_id
-
-  # Name of the spoke as seen from the hub side peering.
-  spoke_label = local.name
-
-  tags = try(local.cfg.tags, {})
-}
