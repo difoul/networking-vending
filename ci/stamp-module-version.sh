@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
 # Stamps the per-app/env VNet module version into module.tf, in place, before
-# `terraform init`. Versions live as data in config/<app>/<env>.json
-# ("module_version"); module.tf stays a real, reviewable, committed file with a
-# baseline version that works for local `terraform validate`/`plan`.
+# `terraform init`. The version is resolved from config/<app>/<env>.json by the
+# `generate` job (which has jq) and injected as the MODULE_VERSION CI variable,
+# so the terraform image needs no jq. module.tf stays a real, reviewable,
+# committed file with a baseline version that works for local
+# `terraform validate`/`plan`.
 #
 # NO-OP when there is nothing to stamp:
 #   - this demo branch has no module.tf (the VNet module is a dummy resource), or
@@ -11,10 +13,8 @@
 # It activates automatically once module.tf uses a registry/git source with a
 # version line.
 #
-# Requires APP and ENV in the environment (set per job by the pipeline).
+# Requires MODULE_VERSION in the environment (set per job by the pipeline).
 set -euo pipefail
-
-config="config/${APP}/${ENV}.json"
 
 # Nothing to stamp without a module.tf that declares a version line.
 if [ ! -f module.tf ] || ! grep -qE '^[[:space:]]*version[[:space:]]*=' module.tf; then
@@ -22,9 +22,9 @@ if [ ! -f module.tf ] || ! grep -qE '^[[:space:]]*version[[:space:]]*=' module.t
   exit 0
 fi
 
-version="$(jq -r '.module_version // empty' "$config")"
+version="${MODULE_VERSION:-}"
 if [ -z "$version" ]; then
-  echo "ERROR: module.tf declares a version but ${config} has no 'module_version'." >&2
+  echo "ERROR: module.tf declares a version but MODULE_VERSION is unset (check config/${APP:-?}/${ENV:-?}.json has 'module_version')." >&2
   exit 1
 fi
 

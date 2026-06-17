@@ -37,16 +37,18 @@ blob per subscription.
 ## Per-app/env module version (demo)
 
 Terraform requires a module's `version` to be a static literal, so it can't be
-a variable. The version lives as data in each config's `module_version`, and
-CI stamps it into the committed `module.tf` (`ci/stamp-module-version.sh`)
-before `terraform init`.
+a variable. The version lives as data in each config's `module_version`. The
+`generate` job (which runs on alpine with `jq`) reads it and bakes it into each
+child job as the `MODULE_VERSION` variable, so the terraform image - which has
+no `jq` - never parses the config. `ci/stamp-module-version.sh` then stamps
+`MODULE_VERSION` into the committed `module.tf` before `terraform init`.
 
 On this demo branch there is no real module (the resource is a `terraform_data`
 placeholder), so the stamp script is a **no-op** and `module_version` is simply
 echoed into state via the placeholder output - demonstrating the data path from
-JSON to per-subscription state (note the sample configs use 1.0.0 for dev and
-1.1.0 for sim). On the real branch the same script stamps the value into
-`module.tf`'s `version` line.
+JSON through the `MODULE_VERSION` job variable into per-subscription state (note
+the sample configs use 1.0.0 for dev and 1.1.0 for sim). On the real branch the
+same script stamps `MODULE_VERSION` into `module.tf`'s `version` line.
 
 ## Required CI/CD variables
 

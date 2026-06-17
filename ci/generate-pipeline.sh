@@ -49,6 +49,10 @@ for f in config/*/*.json; do
   app="$(basename "$(dirname "$f")")"
   env="$(basename "$f" .json)"
   sub_id="$(jq -r '.subscription_id' "$f")"
+  # Resolve the module version HERE (generate runs on alpine with jq) and bake
+  # it into each job as a variable, so the terraform image - which has no jq -
+  # never needs to parse the config to stamp module.tf.
+  mod_ver="$(jq -r '.module_version // empty' "$f")"
   state="${app}-${env}"
   varprefix="$(printf '%s_%s' "$app" "$env" | tr '[:lower:].-' '[:upper:]__')"
 
@@ -62,6 +66,7 @@ plan:${state}:
     ENV: "${env}"
     STATE_NAME: "${state}"
     SUBSCRIPTION_ID: "${sub_id}"
+    MODULE_VERSION: "${mod_ver}"
     VARPREFIX: "${varprefix}"
   script:
     - terraform plan -input=false -var="app=\$APP" -var="env=\$ENV" -out=plan.cache
@@ -93,6 +98,7 @@ apply:${state}:
     ENV: "${env}"
     STATE_NAME: "${state}"
     SUBSCRIPTION_ID: "${sub_id}"
+    MODULE_VERSION: "${mod_ver}"
     VARPREFIX: "${varprefix}"
   environment:
     name: ${state}
