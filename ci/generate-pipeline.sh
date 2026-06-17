@@ -42,6 +42,13 @@ stages:
     - export ARM_SUBSCRIPTION_ID="$SUBSCRIPTION_ID"
     - eval "export ARM_CLIENT_ID=\"\$${VARPREFIX}_CLIENT_ID\""
     - eval "export ARM_CLIENT_SECRET=\"\$${VARPREFIX}_CLIENT_SECRET\""
+    # Auth for the GitLab Terraform module registry at init. Inert while the
+    # module source is local; needed once it points at the registry. Reference
+    # the predefined CI_JOB_TOKEN directly: a UI/project variable set to
+    # $CI_JOB_TOKEN does NOT expand and yields a 401 fetching the module. The
+    # var name maps the host's "." -> "_" and "-" -> "__"
+    # (corp.gitlab -> TF_TOKEN_corp_gitlab); match it to the module source host.
+    - export TF_TOKEN_corp_gitlab="${CI_JOB_TOKEN}"
     - terraform init
 HEADER
 
