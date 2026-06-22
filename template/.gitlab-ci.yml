@@ -1,0 +1,107 @@
+# Per-app repo pipeline (one repo = one app; envs are fixed: dev/sim/uat/exp).
+#
+# Model: GitLab Environments. One plan + apply job per environment. `plan` runs
+# on MRs and the default branch; `apply` runs on the default branch and deploys
+# into the matching GitLab environment. uat + exp are PROTECTED environments
+# (configured by the factory) so their apply pauses for approval; dev + sim
+# deploy automatically.
+#
+# State: GitLab-managed HTTP backend, one state name per env (= $ENV).
+# Auth (production): the shared service principal is inherited from the GROUP
+# CI/CD variables (ARM_CLIENT_ID/SECRET, ARM_TENANT_ID). This demo template
+# uses a terraform_data placeholder, so no Azure auth is exercised.
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+stages:
+  - plan
+  - apply
+
+.terraform:
+  image:
+    name: hashicorp/terraform:1.14
+    entrypoint: [""]
+  variables:
+    # One state name per env, namespaced within this project.
+    TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}"
+    TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}/lock"
+    TF_HTTP_LOCK_METHOD: "POST"
+    TF_HTTP_UNLOCK_METHOD: "DELETE"
+    TF_HTTP_USERNAME: "gitlab-ci-token"
+    TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+    TF_HTTP_RETRY_WAIT_MIN: "5"
+  before_script:
+    # The terraform image is alpine-based; pull jq to resolve the per-env module
+    # version from this repo's own config, then stamp it before init. (No-op on
+    # this demo branch: there is no versioned module.tf, so stamp exits early.)
+    - apk add --no-cache bash jq
+    - export MODULE_VERSION="$(jq -r '.module_version // empty' config/${ENV}.json)"
+    - bash ci/stamp-module-version.sh
+    - terraform init
+
+.plan:
+  extends: .terraform
+  stage: plan
+  script:
+    - terraform plan -input=false -var="env=${ENV}" -out=plan.cache
+  artifacts:
+    paths: [plan.cache]
+    expire_in: 1 day
+
+.apply:
+  extends: .terraform
+  stage: apply
+  script:
+    - terraform apply -input=false plan.cache
+  # Apply only on the default branch. For uat/exp the protected environment
+  # (set by the factory) holds the deployment until it is approved.
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# ----- dev -------------------------------------------------------------------
+plan:dev:
+  extends: .plan
+  variables: { ENV: "dev" }
+
+apply:dev:
+  extends: .apply
+  needs: ["plan:dev"]
+  variables: { ENV: "dev" }
+  environment: { name: "dev" }
+
+# ----- sim -------------------------------------------------------------------
+plan:sim:
+  extends: .plan
+  variables: { ENV: "sim" }
+
+apply:sim:
+  extends: .apply
+  needs: ["plan:sim"]
+  variables: { ENV: "sim" }
+  environment: { name: "sim" }
+
+# ----- uat (protected: requires approval) ------------------------------------
+plan:uat:
+  extends: .plan
+  variables: { ENV: "uat" }
+
+apply:uat:
+  extends: .apply
+  needs: ["plan:uat"]
+  variables: { ENV: "uat" }
+  environment: { name: "uat" }
+
+# ----- exp (protected: requires approval) ------------------------------------
+plan:exp:
+  extends: .plan
+  variables: { ENV: "exp" }
+
+apply:exp:
+  extends: .apply
+  needs: ["plan:exp"]
+  variables: { ENV: "exp" }
+  environment: { name: "exp" }
