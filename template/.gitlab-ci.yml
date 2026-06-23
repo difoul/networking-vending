@@ -22,6 +22,12 @@ workflow:
   # Create a pipeline at all only when something deployable changed (or when an
   # env is forced). Avoids empty, all-jobs-skipped pipelines on docs-only MRs.
   rules:
+    # This file ships as a custom project template; the template project itself
+    # must never run the pipeline (it has no real subscriptions to deploy to).
+    # Set TEMPLATE_REPO=true in the template project's CI/CD variables. Seeding
+    # copies repo files only, not project variables, so app repos won't have it.
+    - if: '$TEMPLATE_REPO == "true"'
+      when: never
     - if: '$DEPLOY_ENV != "auto" && $DEPLOY_ENV != ""'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: &relevant_changes
@@ -95,15 +101,19 @@ stages:
     - terraform apply -input=false plan.cache
   # Apply only on the default branch. Same env selection as plan: forced
   # override wins, else (auto) this env's config change or any shared change.
-  # For uat/exp the protected environment (set by the factory) holds the
-  # deployment until it is approved.
+  # Every env's apply is manual (someone clicks play); rules-based when:manual
+  # is blocking (allow_failure:false) so the pipeline waits for it. uat/exp also
+  # require the factory's protected-environment approval on top of this click.
   rules:
     - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
       when: never
     - if: '$DEPLOY_ENV == "all"'
+      when: manual
     - if: '$DEPLOY_ENV == $ENV'
+      when: manual
     - if: '$DEPLOY_ENV == "auto" || $DEPLOY_ENV == ""'
       changes: *env_changes
+      when: manual
 
 # ----- dev -------------------------------------------------------------------
 plan:dev:
