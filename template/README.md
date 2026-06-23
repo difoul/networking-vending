@@ -29,6 +29,13 @@ as `config/<env>.json`.
 Trunk-based: MRs target `main` (plan only); merging to `main` applies (dev/sim
 auto, uat/exp gated). The same commit promotes across all envs.
 
+## Tearing an env down
+
+*Run pipeline* with `DESTROY=true` **and** `DEPLOY_ENV=<env>`. You get a single
+manual `destroy:<env>` job (`terraform destroy`) on the default branch; plan and
+apply are suppressed for that run. It never auto-fires, and uat/exp destroys are
+still gated by the protected environment.
+
 ## Onboarding a new env
 
 Edit/add `config/<env>.json` (env must be one of dev/sim/uat/exp) and open an

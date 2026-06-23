@@ -13,6 +13,10 @@
 #   - MANUAL override via the "Run pipeline" dropdown: DEPLOY_ENV=<env> forces
 #     just that env regardless of the diff; DEPLOY_ENV=all forces every env.
 #
+# Teardown: run a pipeline with DESTROY=true and DEPLOY_ENV=<env> to get a
+# manual `terraform destroy` job for that env (default branch only). Plan/apply
+# are suppressed on a destroy run, and the destroy job never auto-fires.
+#
 # State: GitLab-managed HTTP backend, one state name per env (= $ENV).
 # Auth (production): the shared service principal is inherited from the GROUP
 # CI/CD variables (ARM_CLIENT_ID/SECRET, ARM_TENANT_ID). This demo template
@@ -27,6 +31,10 @@ workflow:
     # Set TEMPLATE_REPO=true in the template project's CI/CD variables. Seeding
     # copies repo files only, not project variables, so app repos won't have it.
     - if: '$TEMPLATE_REPO == "true"'
+      when: never
+    # A destroy run must target an explicit env; never start one on "auto"
+    # (which would otherwise create a destroy pipeline with no jobs).
+    - if: '$DESTROY == "true" && ($DEPLOY_ENV == "auto" || $DEPLOY_ENV == "")'
       when: never
     - if: '$DEPLOY_ENV != "auto" && $DEPLOY_ENV != ""'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -43,10 +51,15 @@ variables:
     value: "auto"
     options: ["auto", "all", "dev", "sim", "uat", "exp"]
     description: "auto = run envs whose config changed (all envs on shared changes); all = every env; or pick one env to force it."
+  DESTROY:
+    value: "false"
+    options: ["false", "true"]
+    description: "true (with DEPLOY_ENV=<env>) runs `terraform destroy` for that env instead of plan/apply. Manual, default branch only."
 
 stages:
   - plan
   - apply
+  - destroy
 
 .terraform:
   image:
@@ -85,6 +98,8 @@ stages:
   # Forced override wins; otherwise (auto) run on this env's config change or any
   # shared change. $ENV is set per job and expands in the changes paths.
   rules:
+    - if: '$DESTROY == "true"'      # destroy run: skip plan/apply entirely
+      when: never
     - if: '$DEPLOY_ENV == "all"'
     - if: '$DEPLOY_ENV == $ENV'
     - if: '$DEPLOY_ENV == "auto" || $DEPLOY_ENV == ""'
@@ -105,6 +120,8 @@ stages:
   # is blocking (allow_failure:false) so the pipeline waits for it. uat/exp also
   # require the factory's protected-environment approval on top of this click.
   rules:
+    - if: '$DESTROY == "true"'      # destroy run: skip plan/apply entirely
+      when: never
     - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
       when: never
     - if: '$DEPLOY_ENV == "all"'
@@ -114,6 +131,27 @@ stages:
     - if: '$DEPLOY_ENV == "auto" || $DEPLOY_ENV == ""'
       changes: *env_changes
       when: manual
+
+.destroy:
+  extends: .terraform
+  stage: destroy
+  script:
+    - terraform destroy -input=false -auto-approve -var="env=${ENV}"
+  # Opt-in only: needs DESTROY=true AND an explicit DEPLOY_ENV. Default branch
+  # only, manual (you click play), and allow_failure so an un-clicked destroy
+  # never blocks/fails the pipeline. uat/exp stay protected environments, so the
+  # action:stop deployment is gated by the same controls as apply.
+  rules:
+    - if: '$DESTROY != "true"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: never
+    - if: '$DEPLOY_ENV == "all"'
+      when: manual
+      allow_failure: true
+    - if: '$DEPLOY_ENV == $ENV'
+      when: manual
+      allow_failure: true
 
 # ----- dev -------------------------------------------------------------------
 plan:dev:
@@ -126,6 +164,11 @@ apply:dev:
   variables: { ENV: "dev" }
   environment: { name: "dev" }
 
+destroy:dev:
+  extends: .destroy
+  variables: { ENV: "dev" }
+  environment: { name: "dev", action: stop }
+
 # ----- sim -------------------------------------------------------------------
 plan:sim:
   extends: .plan
@@ -136,6 +179,11 @@ apply:sim:
   needs: ["plan:sim"]
   variables: { ENV: "sim" }
   environment: { name: "sim" }
+
+destroy:sim:
+  extends: .destroy
+  variables: { ENV: "sim" }
+  environment: { name: "sim", action: stop }
 
 # ----- uat (protected: requires approval) ------------------------------------
 plan:uat:
@@ -148,6 +196,11 @@ apply:uat:
   variables: { ENV: "uat" }
   environment: { name: "uat" }
 
+destroy:uat:
+  extends: .destroy
+  variables: { ENV: "uat" }
+  environment: { name: "uat", action: stop }
+
 # ----- exp (protected: requires approval) ------------------------------------
 plan:exp:
   extends: .plan
@@ -158,3 +211,8 @@ apply:exp:
   needs: ["plan:exp"]
   variables: { ENV: "exp" }
   environment: { name: "exp" }
+
+destroy:exp:
+  extends: .destroy
+  variables: { ENV: "exp" }
+  environment: { name: "exp", action: stop }
