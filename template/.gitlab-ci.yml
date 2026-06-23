@@ -6,15 +6,37 @@
 # (configured by the factory) so their apply pauses for approval; dev + sim
 # deploy automatically.
 #
+# Environment selection (two ways, combined):
+#   - AUTO (default, DEPLOY_ENV=auto): each env's jobs run only when its own
+#     config/<env>.json changed; a change to SHARED code (*.tf, ci/**,
+#     .gitlab-ci.yml) plans every env. This is the normal MR/merge flow.
+#   - MANUAL override via the "Run pipeline" dropdown: DEPLOY_ENV=<env> forces
+#     just that env regardless of the diff; DEPLOY_ENV=all forces every env.
+#
 # State: GitLab-managed HTTP backend, one state name per env (= $ENV).
 # Auth (production): the shared service principal is inherited from the GROUP
 # CI/CD variables (ARM_CLIENT_ID/SECRET, ARM_TENANT_ID). This demo template
 # uses a terraform_data placeholder, so no Azure auth is exercised.
 
 workflow:
+  # Create a pipeline at all only when something deployable changed (or when an
+  # env is forced). Avoids empty, all-jobs-skipped pipelines on docs-only MRs.
   rules:
+    - if: '$DEPLOY_ENV != "auto" && $DEPLOY_ENV != ""'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &relevant_changes
+        - "config/*.json"
+        - "*.tf"
+        - "ci/**/*"
+        - ".gitlab-ci.yml"
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *relevant_changes
+
+variables:
+  DEPLOY_ENV:
+    value: "auto"
+    options: ["auto", "all", "dev", "sim", "uat", "exp"]
+    description: "auto = run envs whose config changed (all envs on shared changes); all = every env; or pick one env to force it."
 
 stages:
   - plan
@@ -50,17 +72,38 @@ stages:
     - terraform plan -input=false -var="env=${ENV}" -out=plan.cache
   artifacts:
     paths: [plan.cache]
-    expire_in: 1 day
+    # Must outlive the manual-approval wait on protected envs (uat/exp): if the
+    # plan artifact expires before the apply is approved, the reviewed plan is
+    # gone and apply can't run. Keep it well beyond a typical approval window.
+    expire_in: 1 week
+  # Forced override wins; otherwise (auto) run on this env's config change or any
+  # shared change. $ENV is set per job and expands in the changes paths.
+  rules:
+    - if: '$DEPLOY_ENV == "all"'
+    - if: '$DEPLOY_ENV == $ENV'
+    - if: '$DEPLOY_ENV == "auto" || $DEPLOY_ENV == ""'
+      changes: &env_changes
+        - "config/${ENV}.json"
+        - "*.tf"
+        - "ci/**/*"
+        - ".gitlab-ci.yml"
 
 .apply:
   extends: .terraform
   stage: apply
   script:
     - terraform apply -input=false plan.cache
-  # Apply only on the default branch. For uat/exp the protected environment
-  # (set by the factory) holds the deployment until it is approved.
+  # Apply only on the default branch. Same env selection as plan: forced
+  # override wins, else (auto) this env's config change or any shared change.
+  # For uat/exp the protected environment (set by the factory) holds the
+  # deployment until it is approved.
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: never
+    - if: '$DEPLOY_ENV == "all"'
+    - if: '$DEPLOY_ENV == $ENV'
+    - if: '$DEPLOY_ENV == "auto" || $DEPLOY_ENV == ""'
+      changes: *env_changes
 
 # ----- dev -------------------------------------------------------------------
 plan:dev:
